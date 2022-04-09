@@ -1,0 +1,11 @@
+*.pyc
+*.log
+*.egg-info/
+__pycache__/
+*.egg-info/
+*.pyc
+log
+*_cache/
+reversed_models/
+aug_data/
+*network_param.txt
