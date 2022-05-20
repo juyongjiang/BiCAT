@@ -2,8 +2,7 @@
 This is our TensorFlow implementation for the paper: "**[BiCAT: Sequential Recommendation with Bidirectional Chronological Augmentation of Transformer](https://arxiv.org/abs/2112.06460)**".
 Our code is implemented based on TensorFlow version of [SASRec](https://github.com/kang205/SASRec) and [ASReP](https://github.com/DyGRec/ASReP).
 
-## Citation
-Please cite our paper if you use the code:
+Please cite our paper if you find our code or paper useful:
 ```bibtex
 @article{jiang2021sequential,
   title={Sequential Recommendation with Bidirectional Chronological Augmentation of Transformer},
