@@ -1,6 +1,6 @@
 # BiCAT: Sequential Recommendation with Bidirectional Chronological Augmentation of Transformer
 This is our TensorFlow implementation for the paper: "**[BiCAT: Sequential Recommendation with Bidirectional Chronological Augmentation of Transformer](https://arxiv.org/abs/2112.06460)**".
-Our code is implemented based on TensorFlow version of [SASRec](https://github.com/kang205/SASRec) and [ASReP](https://github.com/DyGRec/ASReP).
+Our code is implemented based on TensorFlow version of [SASRec](https://github.com/kang205/SASRec) and [ASReP](https://github.com/DyGRec/ASReP). More useful repositories can be found in our [AIM (DeepSE) Lab](https://github.com/AIM-SE)/[BiCAT](https://github.com/AIM-SE/BiCAT).
 
 Please cite our paper if you find our code or paper useful:
 ```bibtex
