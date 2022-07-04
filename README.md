@@ -74,6 +74,7 @@ python -u main.py --dataset=Cell_Phones_and_Accessories \
 ```
 
 `or`
+
 For the sake of simplicity, you can just run the following simple command:
 
 ```bash
