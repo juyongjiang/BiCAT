@@ -221,6 +221,21 @@ def multihead_attention(queries, keys, values, key_masks,
         
     return outputs
 
+def knowledge_transfer(inputs, num_units, scope="knowledge_transfer"):
+    '''position-wise feed forward net. See 3.3
+
+    inputs: A 3d tensor with shape of [N, T, C].
+    num_units: A list of one integers.
+    scope: Optional scope for `variable_scope`.
+
+    Returns:
+      A 3d tensor with the same shape and dtype as inputs
+    '''
+    with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+        # Transfer layer
+        outputs = tf.layers.dense(inputs, num_units[0]) # activation=tf.nn.relu
+
+    return outputs
 
 def feedforward(inputs, num_units, scope="positionwise_feedforward"):
     '''position-wise feed forward net. See 3.3

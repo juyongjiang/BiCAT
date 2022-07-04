@@ -6,16 +6,35 @@ import multiprocessing
 import time
 import os
 from collections import defaultdict
-
-
 from metrics import *
 from sklearn.preprocessing import MinMaxScaler
 from collections import defaultdict
 from tqdm import tqdm
 import copy
+import time
 
-Ks = [1, 2, 3, 4, 5, 10, 20, 40, 50, 60, 70, 80, 90, 100]
+Ks = [1, 5, 10, 20, 50, 100]
 cores = multiprocessing.cpu_count() // 2
+
+# Set color for tqdm
+def set_color(log, color, highlight=True):
+    color_set = ['black', 'red', 'green', 'yellow', 'blue', 'pink', 'cyan', 'white']
+    try:
+        index = color_set.index(color)
+    except:
+        index = len(color_set) - 1
+    prev_log = '\033['
+    if highlight:
+        prev_log += '1;3'
+    else:
+        prev_log += '0;3'
+    prev_log += str(index) + 'm'
+    return prev_log + log + '\033[0m'
+
+def record_loss(loss_file, loss_left, kl_loss, loss):
+    with open(loss_file, 'a') as f:
+        line = "{:.4f}\t{:.4f}\t{:.4f}\n".format(loss_left, kl_loss, loss)
+        f.write(line) 
 
 def load_file_and_sort(filename, reverse=False, augdata=None, aug_num=0, M=10):
     data = defaultdict(list)
@@ -23,35 +42,40 @@ def load_file_and_sort(filename, reverse=False, augdata=None, aug_num=0, M=10):
     max_iind = 0
     with open(filename, 'r') as f:
         for line in f:
-            one_interaction = line.rstrip().split("\t")
+            one_interaction = line.rstrip().split("\t") # user, item, timestamp
             uind = int(one_interaction[0]) + 1
             iind = int(one_interaction[1]) + 1
             max_uind = max(max_uind, uind)
             max_iind = max(max_iind, iind)
             t = float(one_interaction[2])
-            data[uind].append((iind, t)) #{uind:[(iind,t),...],...}
+            data[uind].append((iind, t)) #{uind:[(iind, t),...],...}
+    
+    # data info
     print('data users: ', max_uind)
     print('data items: ', max_iind)
     print('data instances: ', sum([len(ilist) for _, ilist in data.items()]))
+
+    # use pseudo-prior items to augment original sequences
     if augdata:
         for u, ilist in augdata.items():
-            sorted_interactions = sorted(ilist, key=lambda x:x[1])
-            for i in range(min(aug_num, len(sorted_interactions))): #extract the needed length of aug_items
+            sorted_interactions = sorted(ilist, key=lambda x:x[1]) # sorted by timestamp
+            # M is the threshold of short sequences
+            for i in range(min(aug_num, len(sorted_interactions))): # extract the needed length of aug_items
                 if len(data[u]) >= M: continue
                 data[u].append((sorted_interactions[i]))
         print('After augmentation:')
         print('data users: ', max_uind)
         print('data items: ', max_iind)
-        print('data instances: ', sum([len(ilist) for user, ilist in data.items()]))
+        print('data instances: ', sum([len(ilist) for user, ilist in data.items()])) # bigger than original
 
     sorted_data = {}
     for u, i_list in data.items():
-        if not reverse: #fine-tune
+        if not reverse: # fine-tune
             sorted_interactions = sorted(i_list, key=lambda x:x[1])
-        else: #pre-train
+        else: # pre-train
             sorted_interactions = sorted(i_list, key=lambda x:x[1], reverse=True)
-        seq = [interaction[0] for interaction in sorted_interactions]
-        sorted_data[u] = seq #{uind:[iind,...],...}
+        seq = [interaction[0] for interaction in sorted_interactions] # delete timestamp info
+        sorted_data[u] = seq # {uind:[iind,...],...}
 
     return sorted_data, max_uind, max_iind
 
@@ -70,22 +94,16 @@ def augdata_load(aug_filename):
 
 
 def data_load(data_name, args):
-    reverseornot = args.reversed == 1 #1 means pre-training
-    if not reverseornot: #fine-tune
-        train_file = f"./data/{data_name}/train.txt"
-        valid_file = f"./data/{data_name}/valid.txt"
-        test_file = f"./data/{data_name}/test.txt"
-    else:
-        train_file = f"./data/{data_name}/train_reverse.txt"
-        valid_file = f"./data/{data_name}/valid_reverse.txt"
-        test_file = f"./data/{data_name}/test_reverse.txt"
+    reverseornot = args.reversed == 1 # 1: pre-training, 0: fine-tuning
 
-    #train file processing
+    train_file = f"./data/{data_name}/train.txt"
+    valid_file = f"./data/{data_name}/valid.txt"
+    test_file = f"./data/{data_name}/test.txt"
+
     original_train = None
     augdata = None
-    if args.aug_traindata > 0: #fine-tune
-        original_train_file = f"./data/{data_name}/train.txt"
-        original_train, _, _ = load_file_and_sort(original_train_file)
+    original_train, _, _ = load_file_and_sort(train_file) # {uind:[iind,...],...}
+    if args.aug_traindata > 0: # fine-tune
         aug_data_signature = './aug_data/{}/lr_{}_maxlen_{}_hsize_{}_nblocks_{}_drate_{}_l2_{}_nheads_{}_gen_num_'.format(
                                args.dataset, 
                                args.lr, 
@@ -95,81 +113,83 @@ def data_load(data_name, args):
                                args.dropout_rate, 
                                args.l2_emb, 
                                args.num_heads)
-        
-        #gen_num_max=10 or 20 and M=20
-        gen_num_max = 20
-        if os.path.exists(aug_data_signature + str(gen_num_max) + '_M_20.txt'):
-            augdata = augdata_load(aug_data_signature + str(gen_num_max) + '_M_20.txt')
-            print('load ', aug_data_signature + str(gen_num_max) + '_M_20.txt')
-        else:
-            gen_num_max = 10
-            augdata = augdata_load(aug_data_signature + '10_M_20.txt')
-            print('load ', aug_data_signature + str(gen_num_max) + '_M_20.txt')
 
-    if args.aug_traindata > 0: #fine-tune
+        if os.path.exists(aug_data_signature + '20_M_20.txt'):
+            augdata = augdata_load(aug_data_signature + '20_M_20.txt')
+            print('load generated items: ', aug_data_signature + '20_M_20.txt')
+            time.sleep(3)
+
+    if args.aug_traindata > 0: # fine-tune
         user_train, train_usernum, train_itemnum = load_file_and_sort(train_file, reverse=reverseornot, augdata=augdata, aug_num=args.aug_traindata, M=args.M)
     else:
-        user_train, train_usernum, train_itemnum = load_file_and_sort(train_file, reverse=reverseornot) #pre-train
+        user_train, train_usernum, train_itemnum = load_file_and_sort(train_file, reverse=reverseornot) # pre-train
     
-    #valid and test files processing
+    # valid and test files processing
     user_valid, valid_usernum, valid_itemnum = load_file_and_sort(valid_file, reverse=reverseornot)
     user_test, test_usernum, test_itemnum = load_file_and_sort(test_file, reverse=reverseornot)
 
     usernum = max([train_usernum, valid_usernum, test_usernum])
     itemnum = max([train_itemnum, valid_itemnum, test_itemnum])
 
-    print("num: ", len(user_valid), len(user_test), usernum, itemnum)
+    print("data users: {} data items: {} train users: {} valid users: {} test users {}".format(
+           usernum, itemnum, len(user_train), len(user_valid), len(user_test)))
 
-    return [user_train, user_valid, user_test, original_train, usernum, itemnum]
+    return [user_train, user_valid, user_test, original_train, usernum, itemnum] # {uind:[iind,...],...}
 
 
+# recursive generation
 def data_augment(model, dataset, args, sess, gen_num):
     [train, valid, test, original_train, usernum, itemnum] = copy.deepcopy(dataset)
-    all_users = list(train.keys())
-
+    all_users = list(train.keys()) # users from train
     cumulative_preds = defaultdict(list)
+
+    items_idx_set = set([i for i in range(itemnum)])
     for num_ind in range(gen_num):
         batch_seq = []
         batch_u = []
         batch_item_idx = []
         
-        print('gen %d/%d:' % (num_ind+1, gen_num))
-        for u_ind, u in enumerate(tqdm(all_users)):
-            u_data = train.get(u, []) + valid.get(u, []) + test.get(u, []) + cumulative_preds.get(u, [])
+        # print('Gen %d/%d:' % (num_ind+1, gen_num)) # 
+        for u_ind, u in enumerate(tqdm(all_users, total=len(all_users), ncols=100, desc=set_color(f"Gen {num_ind+1}/{gen_num}", 'green'))):
+            # if u is not existed, return []
+            u_data = train.get(u, []) + valid.get(u, []) + test.get(u, []) + cumulative_preds.get(u, []) # [i1,i2,...] + [in, ...] + []
 
             if len(u_data) == 0 or len(u_data) >= args.M: continue
 
+            # align max sequnece length
             seq = np.zeros([args.maxlen], dtype=np.int32)
-            idx = args.maxlen - 1
+            idx = args.maxlen - 1 # max index
             for i in reversed(u_data):
                 if idx == -1: break
                 seq[idx] = i
                 idx -= 1
+    
+            # unique items
             rated = set(u_data)
-            item_idx = list(set([i for i in range(itemnum)]) - rated)
+            item_idx = list(items_idx_set - rated) # the items which are not existed in sequences
 
             batch_seq.append(seq)
             batch_item_idx.append(item_idx)
             batch_u.append(u)
 
-            if (u_ind + 1) % int(args.batch_size / 16) == 0 or u_ind + 1 == len(all_users):
+            if (u_ind + 1) % (args.batch_size*16) == 0 or u_ind + 1 == len(all_users):
                 predictions = model.predict(sess, batch_u, batch_seq)
+                # re-assign generate top-1 items as pseudo-prior items
                 for batch_ind in range(len(batch_item_idx)):
                     test_item_idx = batch_item_idx[batch_ind]
-                    test_predictions = predictions[batch_ind][test_item_idx]
-    
-                    ranked_items_ind = list((-1*np.array(test_predictions)).argsort())
-                    rankeditem_oneuserids = [int(test_item_idx[i]) for i in ranked_items_ind]
+
+                    test_predictions = predictions[batch_ind][test_item_idx] # select items prob
+                    ranked_items_ind = list((-1*np.array(test_predictions)).argsort()) # get sorted index
+                    rankeditem_oneuserids = int(test_item_idx[ranked_items_ind[0]])
 
                     u_batch_ind = batch_u[batch_ind]
-                    cumulative_preds[u_batch_ind].append(rankeditem_oneuserids[0])
+                    cumulative_preds[u_batch_ind].append(rankeditem_oneuserids) 
 
                 batch_seq = []
                 batch_item_idx = []
                 batch_u = []
 
-    return cumulative_preds
-
+    return cumulative_preds # {user:[i1, i2, i3, ...], ...}
 
 
 def eval_one_interaction(x):
@@ -181,10 +201,10 @@ def eval_one_interaction(x):
             "auc": 0.,
             "mrr": 0.,
     }
-    rankeditems = np.array(x[0])
+    rankeditems = np.array(x[0]) # pred item
     test_ind = x[1]
     scale_pred = x[2]
-    test_item = x[3]
+    test_item = x[3] # gt
     r = np.zeros_like(rankeditems)
     r[rankeditems==test_ind] = 1
     if len(r) != len(scale_pred):
@@ -214,71 +234,28 @@ def rank_corrected(r, m, n):
     assert np.sum(corrected_r) <= 1
     return corrected_r
 
+def init_metrics():
+    metrics_dict = {
+            "precision": np.zeros(len(Ks)),
+            "recall": np.zeros(len(Ks)),
+            "ndcg": np.zeros(len(Ks)),
+            "hit_ratio": np.zeros(len(Ks)),
+            "auc": 0.,
+            "mrr": 0.,
+    }
+    return metrics_dict
 
 def evaluate(model, dataset, args, sess, testorvalid):
     [train, valid, test, original_train, usernum, itemnum] = copy.deepcopy(dataset)
-    results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
+    results = init_metrics()
 
-    short_seq_results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
+    short_seq_results = init_metrics()
+    long_seq_results = init_metrics()
 
-    long_seq_results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
+    short37_seq_results = init_metrics()
+    short720_seq_results = init_metrics()
+    medium2050_seq_results = init_metrics()
 
-    short7_seq_results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
-
-    short37_seq_results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
-
-    medium3_seq_results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
-
-    medium7_seq_results = {
-            "precision": np.zeros(len(Ks)),
-            "recall": np.zeros(len(Ks)),
-            "ndcg": np.zeros(len(Ks)),
-            "hit_ratio": np.zeros(len(Ks)),
-            "auc": 0.,
-            "mrr": 0.,
-    }
     rs = []
 
     if testorvalid == "test":
@@ -296,24 +273,24 @@ def evaluate(model, dataset, args, sess, testorvalid):
     batch_u = []
     batch_item_idx = []
 
-
     u_ind = 0
+    items_idx_set = set([i for i in range(1, itemnum+1)]) # [1, 2, 3, ..., itemnum]
     for u, i_list in eval_data.items():
         u_ind += 1
         if len(train[u]) < 1 or len(eval_data[u]) < 1: continue
-
-
+        # get unique items
         rated = set(train[u])
         rated.add(0)
         if testorvalid == "test":
             valid_set = set(valid.get(u, []))
             rated = rated | valid_set
-
+        
+        # align max sequence length
         seq = np.zeros([args.maxlen], dtype=np.int32)
         idx = args.maxlen - 1
         if testorvalid == "test":
             if u in valid:
-                for i in reversed(valid[u]):
+                for i in reversed(valid[u]): # for test stage, use valid sequences as input
                     if idx == -1: break
                     seq[idx] = i
                     idx -= 1
@@ -321,11 +298,12 @@ def evaluate(model, dataset, args, sess, testorvalid):
             if idx == -1: break
             seq[idx] = i
             idx -= 1
-        item_idx = [i_list[0]]
+        
+        item_idx = [i_list[0]] # valid or gt, single item
         if args.evalnegsample == -1:
-            item_idx += list(set([i for i in range(1, itemnum+1)]) - rated - set([i_list[0]]))
+            item_idx += list(items_idx_set - rated - set([i_list[0]]))
         else:
-            item_candiates = list(set([i for i in range(1, itemnum+1)]) - rated - set([i_list[0]]))
+            item_candiates = list(items_idx_set - rated - set([i_list[0]]))
             if args.evalnegsample >= len(item_candiates):
                 item_idx += item_candiates
             else:
@@ -335,7 +313,7 @@ def evaluate(model, dataset, args, sess, testorvalid):
         batch_item_idx.append(item_idx)
         batch_u.append(u)
 
-        if len(batch_u) % int(args.batch_size / 8) == 0 or u_ind == len(eval_data):
+        if len(batch_u) % (args.batch_size*16) == 0 or u_ind == len(eval_data):
             predictions = model.predict(sess, batch_u, batch_seq)
             for pred_ind in range(predictions.shape[0]):
                 all_predictions_results.append(predictions[pred_ind])
@@ -345,7 +323,6 @@ def evaluate(model, dataset, args, sess, testorvalid):
             batch_seq = []
             batch_item_idx = []
             batch_u = []
-
 
     rankeditems_list = []
     test_indices = []
@@ -357,26 +334,20 @@ def evaluate(model, dataset, args, sess, testorvalid):
     short_seq_scale_pred_list = []
     short_seq_test_allitems = []
 
-    short7_seq_rankeditems_list = []
-    short7_seq_test_indices = []
-    short7_seq_scale_pred_list = []
-    short7_seq_test_allitems = []
-
     short37_seq_rankeditems_list = []
     short37_seq_test_indices = []
     short37_seq_scale_pred_list = []
     short37_seq_test_allitems = []
 
-    medium3_seq_rankeditems_list = []
-    medium3_seq_test_indices = []
-    medium3_seq_scale_pred_list = []
-    medium3_seq_test_allitems = []
+    short720_seq_rankeditems_list = []
+    short720_seq_test_indices = []
+    short720_seq_scale_pred_list = []
+    short720_seq_test_allitems = []
 
-    medium7_seq_rankeditems_list = []
-    medium7_seq_test_indices = []
-    medium7_seq_scale_pred_list = []
-    medium7_seq_test_allitems = []
-
+    medium2050_seq_rankeditems_list = []
+    medium2050_seq_test_indices = []
+    medium2050_seq_scale_pred_list = []
+    medium2050_seq_test_allitems = []
 
     long_seq_rankeditems_list = []
     long_seq_test_indices = []
@@ -399,7 +370,8 @@ def evaluate(model, dataset, args, sess, testorvalid):
         test_indices.append(0)
         test_allitems.append(test_item_idx[0])
         scale_pred_list.append(scale_pred)
-
+        
+        # test or valid stage with original dataset
         if 'aug' in args.dataset or 'itemco' in args.dataset or args.aug_traindata > 0:
             real_train = original_train
         else:
@@ -412,31 +384,25 @@ def evaluate(model, dataset, args, sess, testorvalid):
             short_seq_scale_pred_list.append(scale_pred)
             short_seq_test_allitems.append(test_item_idx[0])
 
-        if len(real_train[all_u[ind]]) <= 7:
-            short7_seq_rankeditems_list.append(sorted_ind)
-            short7_seq_test_indices.append(0)
-            short7_seq_scale_pred_list.append(scale_pred)
-            short7_seq_test_allitems.append(test_item_idx[0])
-
         if len(real_train[all_u[ind]]) > 3 and len(real_train[all_u[ind]]) <= 7:
             short37_seq_rankeditems_list.append(sorted_ind)
             short37_seq_test_indices.append(0)
             short37_seq_scale_pred_list.append(scale_pred)
             short37_seq_test_allitems.append(test_item_idx[0])
 
-        if len(real_train[all_u[ind]]) > 3 and len(real_train[all_u[ind]]) < 20:
-            medium3_seq_rankeditems_list.append(sorted_ind)
-            medium3_seq_test_indices.append(0)
-            medium3_seq_scale_pred_list.append(scale_pred)
-            medium3_seq_test_allitems.append(test_item_idx[0])
+        if len(real_train[all_u[ind]]) > 7 and len(real_train[all_u[ind]]) <= 20:
+            short720_seq_rankeditems_list.append(sorted_ind)
+            short720_seq_test_indices.append(0)
+            short720_seq_scale_pred_list.append(scale_pred)
+            short720_seq_test_allitems.append(test_item_idx[0])
 
-        if len(real_train[all_u[ind]]) > 7 and len(real_train[all_u[ind]]) < 20:
-            medium7_seq_rankeditems_list.append(sorted_ind)
-            medium7_seq_test_indices.append(0)
-            medium7_seq_scale_pred_list.append(scale_pred)
-            medium7_seq_test_allitems.append(test_item_idx[0])
+        if len(real_train[all_u[ind]]) > 20 and len(real_train[all_u[ind]]) <= 50:
+            medium2050_seq_rankeditems_list.append(sorted_ind)
+            medium2050_seq_test_indices.append(0)
+            medium2050_seq_scale_pred_list.append(scale_pred)
+            medium2050_seq_test_allitems.append(test_item_idx[0])
 
-        if len(real_train[all_u[ind]]) >= 20:
+        if len(real_train[all_u[ind]]) > 50:
             long_seq_rankeditems_list.append(sorted_ind)
             long_seq_test_indices.append(0)
             long_seq_scale_pred_list.append(scale_pred)
@@ -450,7 +416,7 @@ def evaluate(model, dataset, args, sess, testorvalid):
         one_pred_result["predicted"] = [int(item_id_pred) for item_id_pred in rankeditem_oneuserids[:100]]
         all_predictions_results_output.append(one_pred_result)
 
-
+    # overall 
     batch_data = zip(rankeditems_list, test_indices, scale_pred_list, test_allitems)
     batch_result = pool.map(eval_one_interaction, batch_data)
     for re in batch_result:
@@ -468,8 +434,7 @@ def evaluate(model, dataset, args, sess, testorvalid):
     results["mrr"] /= len(eval_data)
     print(f"testing #of users: {len(eval_data)}")
 
-
-
+    # seq <= 3
     short_seq_batch_data = zip(short_seq_rankeditems_list, short_seq_test_indices, short_seq_scale_pred_list, short_seq_test_allitems)
     short_seq_batch_result = pool.map(eval_one_interaction, short_seq_batch_data)
     for re in short_seq_batch_result:
@@ -485,29 +450,9 @@ def evaluate(model, dataset, args, sess, testorvalid):
     short_seq_results["hit_ratio"] /= len(short_seq_test_indices)
     short_seq_results["auc"] /= len(short_seq_test_indices)
     short_seq_results["mrr"] /= len(short_seq_test_indices)
-
     print(f"testing #of short seq users with less than 3 training points: {len(short_seq_test_indices)}")
 
-
-
-    short7_seq_batch_data = zip(short7_seq_rankeditems_list, short7_seq_test_indices, short7_seq_scale_pred_list, short7_seq_test_allitems)
-    short7_seq_batch_result = pool.map(eval_one_interaction, short7_seq_batch_data)
-    for re in short7_seq_batch_result:
-        short7_seq_results["precision"] += re["precision"]
-        short7_seq_results["recall"] += re["recall"]
-        short7_seq_results["ndcg"] += re["ndcg"]
-        short7_seq_results["hit_ratio"] += re["hit_ratio"]
-        short7_seq_results["auc"] += re["auc"]
-        short7_seq_results["mrr"] += re["mrr"]
-    short7_seq_results["precision"] /= len(short7_seq_test_indices)
-    short7_seq_results["recall"] /= len(short7_seq_test_indices)
-    short7_seq_results["ndcg"] /= len(short7_seq_test_indices)
-    short7_seq_results["hit_ratio"] /= len(short7_seq_test_indices)
-    short7_seq_results["auc"] /= len(short7_seq_test_indices)
-    short7_seq_results["mrr"] /= len(short7_seq_test_indices)
-    print(f"testing #of short seq users with less than 7 training points: {len(short7_seq_test_indices)}")
-
-
+    # 3 < seq <= 7
     short37_seq_batch_data = zip(short37_seq_rankeditems_list, short37_seq_test_indices, short37_seq_scale_pred_list, short37_seq_test_allitems)
     short37_seq_batch_result = pool.map(eval_one_interaction, short37_seq_batch_data)
     for re in short37_seq_batch_result:
@@ -525,45 +470,43 @@ def evaluate(model, dataset, args, sess, testorvalid):
     short37_seq_results["mrr"] /= len(short37_seq_test_indices)
     print(f"testing #of short seq users with 3 - 7 training points: {len(short37_seq_test_indices)}")
 
+    # 7 < seq <= 20
+    short720_seq_batch_data = zip(short720_seq_rankeditems_list, short720_seq_test_indices, short720_seq_scale_pred_list, short720_seq_test_allitems)
+    short720_seq_batch_result = pool.map(eval_one_interaction, short720_seq_batch_data)
+    for re in short720_seq_batch_result:
+        short720_seq_results["precision"] += re["precision"]
+        short720_seq_results["recall"] += re["recall"]
+        short720_seq_results["ndcg"] += re["ndcg"]
+        short720_seq_results["hit_ratio"] += re["hit_ratio"]
+        short720_seq_results["auc"] += re["auc"]
+        short720_seq_results["mrr"] += re["mrr"]
+    short720_seq_results["precision"] /= len(short720_seq_test_indices)
+    short720_seq_results["recall"] /= len(short720_seq_test_indices)
+    short720_seq_results["ndcg"] /= len(short720_seq_test_indices)
+    short720_seq_results["hit_ratio"] /= len(short720_seq_test_indices)
+    short720_seq_results["auc"] /= len(short720_seq_test_indices)
+    short720_seq_results["mrr"] /= len(short720_seq_test_indices)
+    print(f"testing #of short seq users with 7 - 20 training points: {len(short720_seq_test_indices)}")
 
+    # 20 < seq <= 50
+    medium2050_seq_batch_data = zip(medium2050_seq_rankeditems_list, medium2050_seq_test_indices, medium2050_seq_scale_pred_list, medium2050_seq_test_allitems)
+    medium2050_seq_batch_result = pool.map(eval_one_interaction, medium2050_seq_batch_data)
+    for re in medium2050_seq_batch_result:
+        medium2050_seq_results["precision"] += re["precision"]
+        medium2050_seq_results["recall"] += re["recall"]
+        medium2050_seq_results["ndcg"] += re["ndcg"]
+        medium2050_seq_results["hit_ratio"] += re["hit_ratio"]
+        medium2050_seq_results["auc"] += re["auc"]
+        medium2050_seq_results["mrr"] += re["mrr"]
+    medium2050_seq_results["precision"] /= len(medium2050_seq_test_indices)
+    medium2050_seq_results["recall"] /= len(medium2050_seq_test_indices)
+    medium2050_seq_results["ndcg"] /= len(medium2050_seq_test_indices)
+    medium2050_seq_results["hit_ratio"] /= len(medium2050_seq_test_indices)
+    medium2050_seq_results["auc"] /= len(medium2050_seq_test_indices)
+    medium2050_seq_results["mrr"] /= len(medium2050_seq_test_indices)
+    print(f"testing #of short seq users with 20 - 50 training points: {len(medium2050_seq_test_indices)}")
 
-    medium3_seq_batch_data = zip(medium3_seq_rankeditems_list, medium3_seq_test_indices, medium3_seq_scale_pred_list, medium3_seq_test_allitems)
-    medium3_seq_batch_result = pool.map(eval_one_interaction, medium3_seq_batch_data)
-    for re in medium3_seq_batch_result:
-        medium3_seq_results["precision"] += re["precision"]
-        medium3_seq_results["recall"] += re["recall"]
-        medium3_seq_results["ndcg"] += re["ndcg"]
-        medium3_seq_results["hit_ratio"] += re["hit_ratio"]
-        medium3_seq_results["auc"] += re["auc"]
-        medium3_seq_results["mrr"] += re["mrr"]
-    medium3_seq_results["precision"] /= len(medium3_seq_test_indices)
-    medium3_seq_results["recall"] /= len(medium3_seq_test_indices)
-    medium3_seq_results["ndcg"] /= len(medium3_seq_test_indices)
-    medium3_seq_results["hit_ratio"] /= len(medium3_seq_test_indices)
-    medium3_seq_results["auc"] /= len(medium3_seq_test_indices)
-    medium3_seq_results["mrr"] /= len(medium3_seq_test_indices)
-    print(f"testing #of short seq users with medium3 training points: {len(medium3_seq_test_indices)}")
-
-
-
-    medium7_seq_batch_data = zip(medium7_seq_rankeditems_list, medium7_seq_test_indices, medium7_seq_scale_pred_list, medium7_seq_test_allitems)
-    medium7_seq_batch_result = pool.map(eval_one_interaction, medium7_seq_batch_data)
-    for re in medium7_seq_batch_result:
-        medium7_seq_results["precision"] += re["precision"]
-        medium7_seq_results["recall"] += re["recall"]
-        medium7_seq_results["ndcg"] += re["ndcg"]
-        medium7_seq_results["hit_ratio"] += re["hit_ratio"]
-        medium7_seq_results["auc"] += re["auc"]
-        medium7_seq_results["mrr"] += re["mrr"]
-    medium7_seq_results["precision"] /= len(medium7_seq_test_indices)
-    medium7_seq_results["recall"] /= len(medium7_seq_test_indices)
-    medium7_seq_results["ndcg"] /= len(medium7_seq_test_indices)
-    medium7_seq_results["hit_ratio"] /= len(medium7_seq_test_indices)
-    medium7_seq_results["auc"] /= len(medium7_seq_test_indices)
-    medium7_seq_results["mrr"] /= len(medium7_seq_test_indices)
-    print(f"testing #of short seq users with medium7 training points: {len(medium7_seq_test_indices)}")
-
-
+    # 50 < seq 
     long_seq_batch_data = zip(long_seq_rankeditems_list, long_seq_test_indices, long_seq_scale_pred_list, long_seq_test_allitems)
     long_seq_batch_result = pool.map(eval_one_interaction, long_seq_batch_data)
     for re in long_seq_batch_result:
@@ -579,6 +522,5 @@ def evaluate(model, dataset, args, sess, testorvalid):
     long_seq_results["hit_ratio"] /= len(long_seq_test_indices)
     long_seq_results["auc"] /= len(long_seq_test_indices)
     long_seq_results["mrr"] /= len(long_seq_test_indices)
-
-    print(f"testing #of short seq users with >= 20 training points: {len(long_seq_test_indices)}")
-    return results, short_seq_results, short7_seq_results, short37_seq_results, medium3_seq_results, medium7_seq_results, long_seq_results, all_predictions_results_output
+    print(f"testing #of short seq users with >= 50 training points: {len(long_seq_test_indices)}")
+    return results, short_seq_results, short37_seq_results, short720_seq_results, medium2050_seq_results, long_seq_results, all_predictions_results_output
