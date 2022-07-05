@@ -1,4 +1,8 @@
 # BiCAT: Self-Knowledge Distillation with Bidirectional Chronological Augmentation of Transformer for Sequential Recommendation
+Juyong Jiang, Jae Boum Kim, Yingtao Luo, Kai Zhang, Sunghun Kim\*
+
+(\*) Corresponding Author.
+
 This is our TensorFlow implementation for the paper: "**[Self-Knowledge Distillation with Bidirectional Chronological Augmentation of Transformer for Sequential Recommendation](https://arxiv.org/abs/2112.06460)**".
 Our code is implemented based on TensorFlow version of [SASRec](https://github.com/kang205/SASRec) and [ASReP](https://github.com/DyGRec/ASReP). More useful repositories can be found in our [@AIM (DeepSE) Lab](https://github.com/AIM-SE).
 
@@ -87,6 +91,41 @@ For the sake of simplicity, you can just run the following simple command:
 [option] sh run_pre_train.sh # if pre-trained model is available, it can be skipped.
 sh run_fine_tuning.sh
 ```
+
+## Generated Pseudo-Prior Items
+|  Dataset   |                                   Generated Pseudo-Prior Items                             |   Size  | Recall@5 | NDCG@5 |  MRR |
+| :------- | :----------------------------------------------------------------------------------------- | -------:| ---------:| ------:| ------:|
+| Beauty   | `https://github.com/juyongjiang/BiCAT/tree/master/aug_data/Beauty` | 3.6 MiB | 52.17% | 38.92% |   37.59% |
+| Phones   | `https://github.com/juyongjiang/BiCAT/tree/master/aug_data/Cell_Phones_and_Accessories` | 4.9 MiB | 58.04% | 43.71% |   41.95% |
+
+
+## Pre-trained Models
+So you can run the following command to fine-tuning with pre-trained models:
+
+```bash
+sh run_fine_tuning.sh
+```
+
+|  Dataset   |                                   Pre-trained checkpoint                                   |   Size  | Recall@5 | NDCG@5 |  MRR |
+| :------- | :----------------------------------------------------------------------------------------- | -------:| ---------:| ------:| ------:|
+| Beauty   | `https://github.com/juyongjiang/BiCAT/tree/master/reversed_models/Beauty_reversed` | 22 MiB | 52.17% | 38.92% |   37.59% |
+| Phones   | `https://github.com/juyongjiang/BiCAT/tree/master/reversed_models/Cell_Phones_and_Accessories_reversed` | 5.9 MiB | 58.04% | 43.71% |   41.95% |
+
+## Item Embeddings Visualization
+We analyze item embeddings by t-SNE visualization method to verify that the items with similar semantics can be clustered more closely, and vice versa. The item embeddings numpy array is available as follows.
+
+|  Dataset   |                                   Item Embeddings Numpy Array           |   Size  | Recall@5 | NDCG@5 |  MRR |
+| :------- | :----------------------------------------------------------------------------------------- | -------:| ---------:| ------:| ------:|
+| Beauty   | `https://github.com/juyongjiang/BiCAT/blob/master/Beauty_bicat_embs.npy` | 22 MiB | 52.17% | 38.92% |   37.59% |
+| Phones   | `https://github.com/juyongjiang/BiCAT/blob/master/Cell_Phones_and_Accessories_bicat_embs.npy` | 5.9 MiB | 58.04% | 43.71% |   41.95% |
+
+The results of randomly selected 1,000 items from the whole set of items is as shown in following. 
+
+<p align="center">
+  <img src="./Item_Embs.png" alt="Item Embeddings Visualization" width="800">
+  <br>
+  <b>Figure 2.</b>: Visualization of randomly selected 1,000 item embeddings using t-SNE for Beauty (a-c) and Phones (d-f) dataset. The proposed BiCAT (c)(f) significantly enhance the cluster of items with similar semantics (gray circular region)  that leads to the best Recall@5.
+</p>
 
 ## Contact
 Feel free to contact us if there is any question. (Juyong Jiang, juyongjiang@ust.hk; Russell KIM, russellkim@upstage.ai)
