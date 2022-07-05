@@ -22,7 +22,7 @@ Sequential recommendation can capture user chronological preferences from their 
 <p align="center">
   <img src="./BiCAT.png" alt="BiCAT Framework" width="800">
   <br>
-  <b>Figure 1.</b>: The model architecture of proposed BiCAT consists of three parts: (a) Bidirectional Chronological Pre-training aims to predict prior items (dashed blocks) of sequences with consistent semantic correlation for the next item prediction task; (b) Sequences Augmentation is to generate $k$ pseudo-prior items for short sequences that sequence length is less than threshold M; (c) Self-Knowledge Distillation Fine-tuning is to feed augmented and original sequences to fine-tuning the model for the next item ($v_{n+1}$) prediction with distributed regularization loss.
+  <b>Figure 1.</b> The model architecture of proposed BiCAT consists of three parts: (a) Bidirectional Chronological Pre-training aims to predict prior items (dashed blocks) of sequences with consistent semantic correlation for the next item prediction task; (b) Sequences Augmentation is to generate $k$ pseudo-prior items for short sequences that sequence length is less than threshold M; (c) Self-Knowledge Distillation Fine-tuning is to feed augmented and original sequences to fine-tuning the model for the next item ($v_{n+1}$) prediction with distributed regularization loss.
 </p>
 
 ## Environment
@@ -124,7 +124,7 @@ The results of randomly selected 1,000 items from the whole set of items is as s
 <p align="center">
   <img src="./Item_Embs.png" alt="Item Embeddings Visualization" width="800">
   <br>
-  <b>Figure 2.</b>: Visualization of randomly selected 1,000 item embeddings using t-SNE for Beauty (a-c) and Phones (d-f) dataset. The proposed BiCAT (c)(f) significantly enhance the cluster of items with similar semantics (gray circular region)  that leads to the best Recall@5.
+  <b>Figure 2.</b> Visualization of randomly selected 1,000 item embeddings using t-SNE for Beauty (a-c) and Phones (d-f) dataset. The proposed BiCAT (c)(f) significantly enhance the cluster of items with similar semantics (gray circular region)  that leads to the best Recall@5.
 </p>
 
 ## Contact
