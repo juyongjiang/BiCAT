@@ -1,8 +1,10 @@
 # BiCAT: Self-Knowledge Distillation with Bidirectional Chronological Augmentation of Transformer for Sequential Recommendation
 >Juyong Jiang$^1$, Jae Boum Kim$^1$, Yingtao Luo$^2$, Kai Zhang$^3$, Sunghun Kim$^1$\*
+
 >The Hong Kong University of Science and Technology$^1$
->Carnegie Mellon University$^2$
->East China Normal University$^3$
+
+>Carnegie Mellon University$^2$, East China Normal University$^3$
+
 >{juyongjiang, hunkim}@ust.hk, jbkim@cse.ust.hk, yingtaoluo@cmu.edu, kzhang980@gmail.com
 
 (\*) Corresponding Author.
