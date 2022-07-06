@@ -1,5 +1,5 @@
 # BiCAT: Self-Knowledge Distillation with Bidirectional Chronological Augmentation of Transformer for Sequential Recommendation
-Juyong Jiang, Jae Boum Kim, Yingtao Luo, Kai Zhang, Sunghun Kim\*
+Juyong Jiang, Yingtao Luo, Jae Boum Kim, Kai Zhang, Sunghun Kim\*
 
 (\*) Corresponding Author.
 
